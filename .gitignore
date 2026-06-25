@@ -3,4 +3,5 @@ node_modules/
 .vercel/
 uploads/
 users.json
-resume-store.json.DS_Store
+resume-store.json
+.DS_Store
