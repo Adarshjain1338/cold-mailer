@@ -195,6 +195,7 @@ async function loadTemplate(id) {
   document.getElementById("body").value = tpl.body;
   document.getElementById("to").focus();
   activeTemplateId = id;
+  closeMobileSidebar();
   renderTemplates();
   await updateResumeBanner();
   showToast("Template loaded.", "success");
@@ -810,4 +811,41 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// ── MOBILE NAV ──
+function mobileNav(tab) {
+  document.querySelectorAll(".bottom-nav-item").forEach((el) => {
+    el.classList.remove("active");
+  });
+  document.getElementById(`nav${tab.charAt(0).toUpperCase() + tab.slice(1)}`)?.classList.add("active");
+
+  if (tab === "templates") {
+    openMobileSidebar();
+  } else if (tab === "history") {
+    closeMobileSidebar();
+    openHistory();
+  } else if (tab === "more") {
+    closeMobileSidebar();
+    openMobileMore();
+  } else {
+    closeMobileSidebar();
+  }
+}
+
+function openMobileSidebar() {
+  document.getElementById("sidebar").classList.add("mobile-open");
+  document.getElementById("sheetOverlay").classList.add("open");
+}
+
+function closeMobileSidebar() {
+  document.getElementById("sidebar").classList.remove("mobile-open");
+  document.getElementById("sheetOverlay").classList.remove("open");
+  document.getElementById("navCompose").classList.add("active");
+  document.getElementById("navTemplates").classList.remove("active");
+}
+
+function openMobileMore() {
+  // Reuse sidebar footer actions in a modal on mobile
+  document.getElementById("settingsModal").classList.add("open");
 }

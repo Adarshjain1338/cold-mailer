@@ -5,3 +5,4 @@ uploads/
 users.json
 resume-store.json
 .DS_Store
+.vercel
