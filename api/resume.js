@@ -1,19 +1,26 @@
 require("dotenv").config();
 const { requireAuth } = require("../lib/auth");
 const { UTApi } = require("uploadthing/server");
+const fs = require("fs");
+const path = require("path");
+
+const STORE_PATH = path.join(process.cwd(), "resume-store.json");
 
 function getUTApi() {
-  return new UTApi({ apiKey: process.env.UPLOADTHING_SECRET });
+  return new UTApi({ token: process.env.UPLOADTHING_TOKEN });
 }
 
-// Key naming convention:
-// global resume   → key stored in env or looked up by name prefix "global_"
-// template resume → looked up by name prefix "tpl_{id}_"
+function readStore() {
+  if (!fs.existsSync(STORE_PATH)) return { global: null, templates: {} };
+  try {
+    return JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
+  } catch (e) {
+    return { global: null, templates: {} };
+  }
+}
 
-function buildFileName(scope, templateId, originalName) {
-  const ext = originalName.split(".").pop();
-  if (scope === "global") return `global_resume.${ext}`;
-  return `tpl_${templateId}_resume.${ext}`;
+function writeStore(data) {
+  fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2));
 }
 
 module.exports = async function handler(req, res) {
@@ -25,24 +32,17 @@ module.exports = async function handler(req, res) {
   }
 
   const { action, scope, templateId, fileBase64, fileName, mimeType } = req.body || {};
-  const utapi = getUTApi();
+  const store = readStore();
 
   // ── GET ──
   if (action === "get") {
-    try {
-      const prefix = scope === "global" ? "global_resume" : `tpl_${templateId}_resume`;
-      const { files } = await utapi.listFiles();
-      const match = files.find((f) => f.name.startsWith(prefix));
-      if (!match) return res.status(200).json(null);
-      return res.status(200).json({
-        key: match.key,
-        name: match.name,
-        url: `https://utfs.io/f/${match.key}`,
-      });
-    } catch (e) {
-      console.error("Resume get error:", e.message);
-      return res.status(500).json({ error: "Failed to fetch resume." });
+    if (scope === "global") {
+      return res.status(200).json(store.global || null);
     }
+    if (scope === "template" && templateId) {
+      return res.status(200).json(store.templates[templateId] || null);
+    }
+    return res.status(400).json({ error: "Invalid scope." });
   }
 
   // ── UPLOAD ──
@@ -58,38 +58,61 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-      // Delete existing first
-      const prefix = scope === "global" ? "global_resume" : `tpl_${templateId}_resume`;
-      const { files } = await utapi.listFiles();
-      const existing = files.find((f) => f.name.startsWith(prefix));
-      if (existing) await utapi.deleteFiles(existing.key).catch(() => {});
+      const utapi = getUTApi();
 
-      // Upload new
-      const safeName = buildFileName(scope, templateId, fileName);
+      // Delete old file if exists
+      if (scope === "global" && store.global?.key) {
+        await utapi.deleteFiles([store.global.key]).catch(() => {});
+      }
+      if (scope === "template" && templateId && store.templates[templateId]?.key) {
+        await utapi.deleteFiles([store.templates[templateId].key]).catch(() => {});
+      }
+
+      // Upload new file
       const buffer = Buffer.from(fileBase64, "base64");
-      const file = new File([buffer], safeName, { type: mimeType });
-      const result = await utapi.uploadFiles(file);
+      const file = new File([buffer], fileName, { type: mimeType });
+      const response = await utapi.uploadFiles([file]);
 
-      if (result.error) throw new Error(result.error.message);
+      if (!response?.[0]?.data) {
+        const errMsg = response?.[0]?.error?.message || "Upload failed.";
+        console.error("UT upload error:", errMsg);
+        return res.status(500).json({ error: errMsg });
+      }
 
-      return res.status(200).json({
-        key: result.data.key,
-        name: result.data.name,
-        url: `https://utfs.io/f/${result.data.key}`,
-      });
+      const uploaded = {
+        key: response[0].data.key,
+        name: response[0].data.name,
+        url: response[0].data.ufsUrl || response[0].data.url,
+      };
+
+      if (scope === "global") {
+        store.global = uploaded;
+      } else if (scope === "template" && templateId) {
+        store.templates[templateId] = uploaded;
+      }
+
+      writeStore(store);
+      return res.status(200).json(uploaded);
     } catch (e) {
       console.error("Resume upload error:", e.message);
-      return res.status(500).json({ error: "Upload failed." });
+      return res.status(500).json({ error: "Upload failed: " + e.message });
     }
   }
 
   // ── DELETE ──
   if (action === "delete") {
     try {
-      const prefix = scope === "global" ? "global_resume" : `tpl_${templateId}_resume`;
-      const { files } = await utapi.listFiles();
-      const existing = files.find((f) => f.name.startsWith(prefix));
-      if (existing) await utapi.deleteFiles(existing.key);
+      const utapi = getUTApi();
+
+      if (scope === "global" && store.global?.key) {
+        await utapi.deleteFiles([store.global.key]).catch(() => {});
+        store.global = null;
+      } else if (scope === "template" && templateId && store.templates[templateId]?.key) {
+        await utapi.deleteFiles([store.templates[templateId].key]).catch(() => {});
+        delete store.templates[templateId];
+      }
+
+      writeStore(store);
       return res.status(200).json({ message: "Deleted." });
     } catch (e) {
       console.error("Resume delete error:", e.message);
