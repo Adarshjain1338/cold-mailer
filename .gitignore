@@ -1,0 +1,6 @@
+node_modules/
+.env
+.vercel/
+uploads/
+users.json
+resume-store.json.DS_Store

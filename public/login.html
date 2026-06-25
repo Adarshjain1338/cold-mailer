@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cold Mailer — Login</title>
+    <link rel="stylesheet" href="login.css" />
+  </head>
+  <body>
+    <div class="login-wrap">
+      <div class="login-card">
+
+        <div class="login-header">
+          <div class="login-logo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+            </svg>
+          </div>
+          <h1>Cold Mailer</h1>
+          <p>Sign in to continue</p>
+        </div>
+
+        <div class="login-form">
+          <div class="field">
+            <label for="username">Username</label>
+            <input
+              type="text"
+              id="username"
+              placeholder="Enter username"
+              autocomplete="username"
+              autofocus
+            />
+          </div>
+
+          <div class="field">
+            <label for="password">Password</label>
+            <div class="password-wrap">
+              <input
+                type="password"
+                id="password"
+                placeholder="Enter password"
+                autocomplete="current-password"
+              />
+              <button class="btn-toggle-pass" id="btnTogglePass" tabindex="-1">
+                <svg id="iconShow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg id="iconHide" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                  <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                  <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                  <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                  <line x1="2" y1="2" x2="22" y2="22"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div id="loginError" class="login-error" style="display:none"></div>
+
+          <button class="btn-login" id="btnLogin">Sign In</button>
+        </div>
+
+      </div>
+    </div>
+
+    <script>
+      // Redirect if already logged in
+      if (localStorage.getItem("cm_token")) {
+        window.location.href = "/";
+      }
+
+      const usernameEl = document.getElementById("username");
+      const passwordEl = document.getElementById("password");
+      const btnLogin = document.getElementById("btnLogin");
+      const loginError = document.getElementById("loginError");
+      const btnTogglePass = document.getElementById("btnTogglePass");
+      const iconShow = document.getElementById("iconShow");
+      const iconHide = document.getElementById("iconHide");
+
+      // Toggle password visibility
+      btnTogglePass.addEventListener("click", () => {
+        const isPassword = passwordEl.type === "password";
+        passwordEl.type = isPassword ? "text" : "password";
+        iconShow.style.display = isPassword ? "none" : "block";
+        iconHide.style.display = isPassword ? "block" : "none";
+      });
+
+      // Submit on Enter
+      passwordEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") login();
+      });
+
+      usernameEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") passwordEl.focus();
+      });
+
+      btnLogin.addEventListener("click", login);
+
+      async function login() {
+        const username = usernameEl.value.trim();
+        const password = passwordEl.value.trim();
+
+        if (!username || !password) {
+          showError("Username and password are required.");
+          return;
+        }
+
+        btnLogin.disabled = true;
+        btnLogin.textContent = "Signing in...";
+        loginError.style.display = "none";
+
+        try {
+          const res = await fetch("/api/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            localStorage.setItem("cm_token", data.token);
+            window.location.href = "/";
+          } else {
+            showError(data.error || "Login failed.");
+          }
+        } catch (e) {
+          showError("Network error. Try again.");
+        } finally {
+          btnLogin.disabled = false;
+          btnLogin.textContent = "Sign In";
+        }
+      }
+
+      function showError(msg) {
+        loginError.textContent = msg;
+        loginError.style.display = "block";
+      }
+    </script>
+  </body>
+</html>
