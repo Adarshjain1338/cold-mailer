@@ -853,6 +853,16 @@ textarea:focus {
   display: none;
 }
 
+.setup-warning {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 /* ════════════════════════════════════════
    MOBILE — primary layout target
 ════════════════════════════════════════ */

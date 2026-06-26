@@ -1,56 +1,57 @@
 require("dotenv").config();
 const { requireAuth } = require("../lib/auth");
+const { getAdminClient } = require("../lib/supabase");
 
 module.exports = async function handler(req, res) {
-  const user = requireAuth(req, res);
+  const user = await requireAuth(req, res);
   if (!user) return;
 
+  const admin = getAdminClient();
+
   if (req.method === "GET") {
+    const { data, error } = await admin
+      .from("user_settings")
+      .select("from_name, gmail_user, gmail_app_password, groq_api_key, ai_enabled")
+      .eq("user_id", user.id)
+      .single();
+
+    if (error && error.code !== "PGRST116") {
+      return res.status(500).json({ error: error.message });
+    }
+
     return res.status(200).json({
-      gmailUser: process.env.GMAIL_USER || "",
-      fromName: process.env.FROM_NAME || "",
-      aiEnabled: process.env.AI_ENABLED === "true",
-      hasAppPassword: !!process.env.GMAIL_APP_PASSWORD,
-      hasGroqKey: !!process.env.GROQ_API_KEY,
+      fromName: data?.from_name || "",
+      gmailUser: data?.gmail_user || "",
+      aiEnabled: data?.ai_enabled || false,
+      hasAppPassword: !!data?.gmail_app_password,
+      hasGroqKey: !!data?.groq_api_key,
+      needsSetup: !data?.gmail_app_password || !data?.gmail_user,
     });
   }
 
   if (req.method === "POST") {
-    // On Vercel, env vars are set in dashboard
-    // This endpoint is kept for local dev only
-    if (process.env.VERCEL) {
-      return res.status(200).json({
-        message: "On Vercel, update environment variables in the Vercel dashboard.",
-        dashboardUrl: "https://vercel.com/dashboard",
-      });
+    const { fromName, gmailUser, appPassword, groqApiKey, aiEnabled } = req.body;
+
+    if (!fromName || !gmailUser) {
+      return res.status(400).json({ error: "Sender name and Gmail address are required." });
     }
 
-    const fs = require("fs");
-    const path = require("path");
-    const { gmailUser, appPassword, fromName, groqApiKey, aiEnabled } = req.body;
+    const updates = {
+      from_name: fromName,
+      gmail_user: gmailUser,
+      ai_enabled: typeof aiEnabled === "boolean" ? aiEnabled : false,
+      updated_at: new Date().toISOString(),
+    };
 
-    const envPath = path.join(process.cwd(), ".env");
-    let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+    if (appPassword) updates.gmail_app_password = appPassword;
+    if (groqApiKey) updates.groq_api_key = groqApiKey;
 
-    const updates = {};
-    if (gmailUser) updates["GMAIL_USER"] = gmailUser;
-    if (appPassword) updates["GMAIL_APP_PASSWORD"] = appPassword;
-    if (fromName) updates["FROM_NAME"] = fromName;
-    if (groqApiKey) updates["GROQ_API_KEY"] = groqApiKey;
-    if (typeof aiEnabled === "boolean") updates["AI_ENABLED"] = aiEnabled.toString();
+    const { error } = await admin
+      .from("user_settings")
+      .upsert({ user_id: user.id, ...updates }, { onConflict: "user_id" });
 
-    for (const [key, value] of Object.entries(updates)) {
-      const regex = new RegExp(`^${key}=.*$`, "m");
-      const line = `${key}=${value}`;
-      if (regex.test(content)) {
-        content = content.replace(regex, line);
-      } else {
-        content += `\n${line}`;
-      }
-      process.env[key] = value;
-    }
+    if (error) return res.status(500).json({ error: error.message });
 
-    fs.writeFileSync(envPath, content);
     return res.status(200).json({ message: "Settings saved." });
   }
 

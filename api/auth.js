@@ -1,6 +1,5 @@
 require("dotenv").config();
-const { signToken } = require("../lib/auth");
-const { verifyPassword, createUser, findUser } = require("../lib/users");
+const { getAdminClient, getAuthClient } = require("../lib/supabase");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -13,27 +12,50 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: "Username and password are required." });
   }
 
-  // Check if this is the admin from .env
-  const isEnvAdmin =
-    username === process.env.ADMIN_USERNAME &&
-    password === process.env.ADMIN_PASSWORD;
+  try {
+    const supabase = getAuthClient();
+    const admin = getAdminClient();
 
-  if (isEnvAdmin) {
-    // Auto-create admin in users.json if not exists
-    const exists = findUser(username);
-    if (!exists) {
-      await createUser(username, password, "admin").catch(() => {});
+    // Sign in with email (username is email)
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: username,
+      password,
+    });
+
+    if (authError || !authData?.session) {
+      return res.status(401).json({ error: "Invalid credentials." });
     }
-    const token = signToken({ username, role: "admin" });
-    return res.status(200).json({ token, role: "admin" });
-  }
 
-  // Check users.json
-  const user = await verifyPassword(username, password);
-  if (!user) {
-    return res.status(401).json({ error: "Invalid credentials." });
-  }
+    const userId = authData.user.id;
+    const token = authData.session.access_token;
 
-  const token = signToken({ username: user.username, role: user.role });
-  return res.status(200).json({ token, role: user.role });
+    // Get or create user_settings row
+    let { data: settings } = await admin
+      .from("user_settings")
+      .select("role, gmail_user, gmail_app_password")
+      .eq("user_id", userId)
+      .single();
+
+    if (!settings) {
+      // First login — create settings row
+      const { data: newSettings } = await admin
+        .from("user_settings")
+        .insert({ user_id: userId, role: "user" })
+        .select()
+        .single();
+      settings = newSettings;
+    }
+
+    // Prompt if app password not set
+    const needsSetup = !settings?.gmail_app_password || !settings?.gmail_user;
+
+    return res.status(200).json({
+      token,
+      role: settings?.role || "user",
+      needsSetup,
+    });
+  } catch (e) {
+    console.error("Auth error:", e.message);
+    return res.status(500).json({ error: "Login failed." });
+  }
 };

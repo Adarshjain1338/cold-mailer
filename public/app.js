@@ -19,8 +19,8 @@ function handleUnauth(res) {
 }
 
 // ── STATE ──
-let templates = JSON.parse(localStorage.getItem("cm_templates") || "[]");
-let history = JSON.parse(localStorage.getItem("cm_history") || "[]");
+let templates = [];
+let history = [];
 let globalSignature = localStorage.getItem("cm_signature") || "";
 let globalResume = null;
 let activeTemplateId = null;
@@ -29,10 +29,14 @@ let tplResumeOverride = null;
 
 // ── INIT ──
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadGlobalResume();
+  await Promise.all([
+    loadGlobalResume(),
+    loadTemplates(),
+    checkAiAvailability(),
+    checkNeedsSetup(),
+  ]);
   renderTemplates();
   updateResumeBanner();
-  await checkAiAvailability();
   setupSidebar();
   setupSendButton();
   setupTemplateModal();
@@ -44,6 +48,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupAiButtons();
   setupLogout();
 });
+
+// ── NEEDS SETUP CHECK ──
+async function checkNeedsSetup() {
+  try {
+    const res = await fetch("/api/config", { headers: authHeaders() });
+    if (handleUnauth(res)) return;
+    const data = await res.json();
+    if (data.needsSetup) {
+      showToast("Please configure your Gmail settings to send emails.", "error");
+      setTimeout(() => openSettings(), 1500);
+    }
+  } catch (e) {}
+}
+
+// ── LOAD TEMPLATES FROM SUPABASE ──
+async function loadTemplates() {
+  try {
+    const res = await fetch("/api/templates", { headers: authHeaders() });
+    if (handleUnauth(res)) return;
+    if (res.ok) {
+      templates = await res.json();
+    }
+  } catch (e) {
+    console.error("Failed to load templates:", e.message);
+  }
+}
 
 // ── SIDEBAR ──
 function setupSidebar() {
@@ -58,6 +88,7 @@ function setupLogout() {
   document.getElementById("btnLogout").addEventListener("click", () => {
     if (!confirm("Sign out?")) return;
     localStorage.removeItem("cm_token");
+    localStorage.removeItem("cm_signature");
     window.location.href = "/login";
   });
 }
@@ -77,9 +108,7 @@ async function checkAiAvailability() {
 // ── AI TOGGLE ──
 function setupAiToggle() {
   document.getElementById("aiToggle").addEventListener("change", (e) => {
-    document.getElementById("aiBar").style.display = e.target.checked
-      ? "flex"
-      : "none";
+    document.getElementById("aiBar").style.display = e.target.checked ? "flex" : "none";
   });
 }
 
@@ -152,7 +181,7 @@ function setAiLoading(loading) {
   document.getElementById("btnAiImprove").textContent = loading ? "..." : "Improve";
 }
 
-// ── TEMPLATES ──
+// ── RENDER TEMPLATES ──
 function renderTemplates() {
   const list = document.getElementById("templateList");
   if (templates.length === 0) {
@@ -188,6 +217,7 @@ function renderTemplates() {
   });
 }
 
+// ── LOAD TEMPLATE INTO FORM ──
 async function loadTemplate(id) {
   const tpl = templates.find((t) => t.id === id);
   if (!tpl) return;
@@ -195,9 +225,9 @@ async function loadTemplate(id) {
   document.getElementById("body").value = tpl.body;
   document.getElementById("to").focus();
   activeTemplateId = id;
-  closeMobileSidebar();
   renderTemplates();
   await updateResumeBanner();
+  closeMobileSidebar();
   showToast("Template loaded.", "success");
 }
 
@@ -242,7 +272,7 @@ async function loadGlobalResume() {
       headers: authHeaders(),
       body: JSON.stringify({ action: "get", scope: "global" }),
     });
-    globalResume = await res.json();
+    if (res.ok) globalResume = await res.json();
   } catch (e) {
     globalResume = null;
   }
@@ -270,15 +300,17 @@ function setupGlobalResumeModal() {
 
   document.getElementById("globalResumeDeleteBtn").addEventListener("click", async () => {
     if (!confirm("Remove global resume?")) return;
-    await fetch("/api/resume", {
+    const res = await fetch("/api/resume", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ action: "delete", scope: "global" }),
     });
-    globalResume = null;
-    renderGlobalResumeModal();
-    await updateResumeBanner();
-    showToast("Global resume removed.", "error");
+    if (res.ok) {
+      globalResume = null;
+      renderGlobalResumeModal();
+      await updateResumeBanner();
+      showToast("Global resume removed.", "error");
+    }
   });
 }
 
@@ -295,6 +327,7 @@ async function uploadResume(file, scope, templateId) {
         fileBase64: base64,
         fileName: file.name,
         mimeType: file.type,
+        fileSize: file.size,
       }),
     });
     if (handleUnauth(res)) return null;
@@ -371,17 +404,34 @@ function setupTemplateModal() {
   });
 
   document.getElementById("tplResumeDeleteBtn").addEventListener("click", async () => {
-    if (!confirm("Remove resume override for this template?")) return;
-    if (editingId) {
-      await fetch("/api/resume", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ action: "delete", scope: "template", templateId: editingId }),
-      });
+    if (!confirm("Remove resume from this template?")) return;
+    const btn = document.getElementById("tplResumeDeleteBtn");
+    btn.disabled = true;
+    btn.textContent = "Removing...";
+    try {
+      if (editingId && tplResumeOverride?.key) {
+        const res = await fetch("/api/resume", {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ action: "delete", scope: "template", templateId: editingId }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          showToast(data.error || "Failed to remove resume.", "error");
+          return;
+        }
+      }
+      tplResumeOverride = null;
+      document.getElementById("tplResumeCurrentName").textContent = "No override set";
+      document.getElementById("tplResumeDeleteBtn").style.display = "none";
+      await updateResumeBanner();
+      showToast("Resume removed from template.", "error");
+    } catch (e) {
+      showToast("Network error.", "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Remove";
     }
-    tplResumeOverride = null;
-    document.getElementById("tplResumeCurrentName").textContent = "No override set";
-    document.getElementById("tplResumeDeleteBtn").style.display = "none";
   });
 }
 
@@ -451,47 +501,82 @@ async function saveTemplate() {
     return;
   }
 
-  let savedId = editingId;
+  const btn = document.getElementById("modalSave");
+  btn.disabled = true;
+  btn.textContent = "Saving...";
 
-  if (editingId) {
-    templates = templates.map((t) =>
-      t.id === editingId ? { ...t, name, subject, body, signature } : t
-    );
-  } else {
-    savedId = Date.now().toString();
-    templates.push({ id: savedId, name, subject, body, signature });
+  try {
+    let savedId = editingId;
+
+    if (editingId) {
+      const res = await fetch("/api/templates", {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ id: editingId, name, subject, body, signature }),
+      });
+      if (handleUnauth(res)) return;
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Failed to save.", "error");
+        return;
+      }
+      templates = templates.map((t) => (t.id === editingId ? data : t));
+    } else {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ name, subject, body, signature }),
+      });
+      if (handleUnauth(res)) return;
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Failed to save.", "error");
+        return;
+      }
+      savedId = data.id;
+      templates.unshift(data);
+    }
+
+    if (tplResumeOverride?.pendingFile) {
+      await uploadResume(tplResumeOverride.pendingFile, "template", savedId);
+    }
+
+    renderTemplates();
+    closeTemplateModal();
+    showToast(editingId ? "Template updated." : "Template saved.", "success");
+  } catch (e) {
+    showToast("Network error.", "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save Template";
   }
-
-  persistTemplates();
-
-  if (tplResumeOverride?.pendingFile) {
-    await uploadResume(tplResumeOverride.pendingFile, "template", savedId);
-  }
-
-  renderTemplates();
-  closeTemplateModal();
-  showToast(editingId ? "Template updated." : "Template saved.", "success");
 }
 
-function deleteTemplate(id) {
+async function deleteTemplate(id) {
   if (!confirm("Delete this template?")) return;
-  templates = templates.filter((t) => t.id !== id);
-  if (activeTemplateId === id) {
-    activeTemplateId = null;
-    updateResumeBanner();
-  }
-  fetch("/api/resume", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ action: "delete", scope: "template", templateId: id }),
-  }).catch(() => {});
-  persistTemplates();
-  renderTemplates();
-  showToast("Template deleted.", "error");
-}
 
-function persistTemplates() {
-  localStorage.setItem("cm_templates", JSON.stringify(templates));
+  const res = await fetch("/api/templates", {
+    method: "DELETE",
+    headers: authHeaders(),
+    body: JSON.stringify({ id }),
+  });
+
+  if (handleUnauth(res)) return;
+
+  if (res.ok) {
+    templates = templates.filter((t) => t.id !== id);
+    if (activeTemplateId === id) {
+      activeTemplateId = null;
+      updateResumeBanner();
+    }
+    fetch("/api/resume", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ action: "delete", scope: "template", templateId: id }),
+    }).catch(() => {});
+    renderTemplates();
+    showToast("Template deleted.", "error");
+  }
 }
 
 // ── HISTORY MODAL ──
@@ -506,13 +591,26 @@ function setupHistoryModal() {
   });
 }
 
-function openHistory() {
-  renderHistory();
+async function openHistory() {
+  await loadHistory();
   document.getElementById("historyModal").classList.add("open");
 }
 
 function closeHistory() {
   document.getElementById("historyModal").classList.remove("open");
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch("/api/history", { headers: authHeaders() });
+    if (handleUnauth(res)) return;
+    if (res.ok) {
+      history = await res.json();
+    }
+  } catch (e) {
+    console.error("Failed to load history:", e.message);
+  }
+  renderHistory();
 }
 
 function renderHistory() {
@@ -521,56 +619,41 @@ function renderHistory() {
     list.innerHTML = `<div class="history-empty">No emails sent yet.</div>`;
     return;
   }
-  list.innerHTML = [...history]
-    .reverse()
+  list.innerHTML = history
     .map(
       (h) => `
       <div class="history-item">
-        <span class="history-to">${escHtml(h.to)}</span>
+        <span class="history-to">${escHtml(h.recipients.join(", "))}</span>
         <span class="history-subject">${escHtml(h.subject)}</span>
-        <span class="history-template">${escHtml(h.template || "No template")}</span>
-        <span class="history-date">${escHtml(h.date)}</span>
+        <span class="history-template">${escHtml(h.status)}</span>
+        <span class="history-date">${new Date(h.sent_at).toLocaleString()}</span>
       </div>`
     )
     .join("");
 }
 
-function addToHistory(to, subject) {
-  const tpl = templates.find((t) => t.id === activeTemplateId);
-  history.push({
-    to,
-    subject,
-    template: tpl ? tpl.name : "No template",
-    date: new Date().toLocaleString(),
-  });
-  localStorage.setItem("cm_history", JSON.stringify(history));
-}
-
-function clearHistory() {
+async function clearHistory() {
   if (!confirm("Clear all send history?")) return;
-  history = [];
-  localStorage.setItem("cm_history", JSON.stringify(history));
-  renderHistory();
+  const res = await fetch("/api/history", {
+    method: "DELETE",
+    headers: authHeaders(),
+    body: JSON.stringify({ all: true }),
+  });
+  if (res.ok) {
+    history = [];
+    renderHistory();
+    showToast("History cleared.", "error");
+  }
 }
 
 async function sendDailySummary() {
-  const today = new Date().toLocaleDateString();
-  const todayEntries = history.filter((h) => h.date.includes(today));
-
-  if (todayEntries.length === 0) {
-    showToast("No emails sent today.", "error");
-    return;
-  }
-
   const btn = document.getElementById("btnSendSummary");
   btn.disabled = true;
   btn.textContent = "Sending...";
-
   try {
     const res = await fetch("/api/summary", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ entries: todayEntries }),
     });
     if (handleUnauth(res)) return;
     const data = await res.json();
@@ -626,7 +709,6 @@ function setupSettingsModal() {
     if (e.target === document.getElementById("settingsModal")) closeSettings();
   });
 
-  // Password visibility toggle
   document.getElementById("settingsTogglePass").addEventListener("click", () => {
     const input = document.getElementById("settingsAppPassword");
     const isPass = input.type === "password";
@@ -646,6 +728,12 @@ async function openSettings() {
     document.getElementById("settingsAppPassword").value = "";
     document.getElementById("settingsGroqKey").value = "";
     document.getElementById("settingsAiEnabled").checked = data.aiEnabled || false;
+
+    // Show setup warning if not configured
+    const warningEl = document.getElementById("settingsSetupWarning");
+    if (warningEl) {
+      warningEl.style.display = data.needsSetup ? "block" : "none";
+    }
   } catch (e) {
     showToast("Failed to load settings.", "error");
     return;
@@ -669,13 +757,17 @@ async function saveSettings() {
     return;
   }
 
+  if (!appPassword) {
+    showToast("App password is required.", "error");
+    return;
+  }
+
   const btn = document.getElementById("settingsSave");
   btn.disabled = true;
   btn.textContent = "Saving...";
 
   try {
-    const payload = { fromName, gmailUser, aiEnabled };
-    if (appPassword) payload.appPassword = appPassword;
+    const payload = { fromName, gmailUser, aiEnabled, appPassword };
     if (groqApiKey) payload.groqApiKey = groqApiKey;
 
     const res = await fetch("/api/settings", {
@@ -766,8 +858,13 @@ async function sendMail() {
     if (handleUnauth(res)) return;
     const data = await res.json();
 
+    if (data.needsSetup) {
+      showToast("Please configure Gmail settings first.", "error");
+      setTimeout(() => openSettings(), 1000);
+      return;
+    }
+
     if (res.ok || res.status === 207) {
-      addToHistory(to, subject);
       showToast(data.message, "success");
       document.getElementById("to").value = "";
       document.getElementById("subject").value = "";
@@ -784,6 +881,40 @@ async function sendMail() {
     btn.disabled = false;
     btnText.textContent = "Send";
   }
+}
+
+// ── MOBILE NAV ──
+function mobileNav(tab) {
+  document.querySelectorAll(".bottom-nav-item").forEach((el) => {
+    el.classList.remove("active");
+  });
+  document.getElementById(`nav${tab.charAt(0).toUpperCase() + tab.slice(1)}`)?.classList.add("active");
+
+  if (tab === "templates") {
+    openMobileSidebar();
+  } else if (tab === "history") {
+    closeMobileSidebar();
+    openHistory();
+  } else if (tab === "more") {
+    closeMobileSidebar();
+    openSettings();
+  } else {
+    closeMobileSidebar();
+  }
+}
+
+function openMobileSidebar() {
+  document.getElementById("sidebar").classList.add("mobile-open");
+  document.getElementById("sheetOverlay").classList.add("open");
+}
+
+function closeMobileSidebar() {
+  document.getElementById("sidebar").classList.remove("mobile-open");
+  document.getElementById("sheetOverlay").classList.remove("open");
+  const navCompose = document.getElementById("navCompose");
+  const navTemplates = document.getElementById("navTemplates");
+  if (navCompose) navCompose.classList.add("active");
+  if (navTemplates) navTemplates.classList.remove("active");
 }
 
 // ── UTILS ──
@@ -811,41 +942,4 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-// ── MOBILE NAV ──
-function mobileNav(tab) {
-  document.querySelectorAll(".bottom-nav-item").forEach((el) => {
-    el.classList.remove("active");
-  });
-  document.getElementById(`nav${tab.charAt(0).toUpperCase() + tab.slice(1)}`)?.classList.add("active");
-
-  if (tab === "templates") {
-    openMobileSidebar();
-  } else if (tab === "history") {
-    closeMobileSidebar();
-    openHistory();
-  } else if (tab === "more") {
-    closeMobileSidebar();
-    openMobileMore();
-  } else {
-    closeMobileSidebar();
-  }
-}
-
-function openMobileSidebar() {
-  document.getElementById("sidebar").classList.add("mobile-open");
-  document.getElementById("sheetOverlay").classList.add("open");
-}
-
-function closeMobileSidebar() {
-  document.getElementById("sidebar").classList.remove("mobile-open");
-  document.getElementById("sheetOverlay").classList.remove("open");
-  document.getElementById("navCompose").classList.add("active");
-  document.getElementById("navTemplates").classList.remove("active");
-}
-
-function openMobileMore() {
-  // Reuse sidebar footer actions in a modal on mobile
-  document.getElementById("settingsModal").classList.add("open");
 }

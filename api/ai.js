@@ -1,19 +1,28 @@
 require("dotenv").config();
 const { requireAuth } = require("../lib/auth");
+const { getAdminClient } = require("../lib/supabase");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed." });
   }
 
-  const user = requireAuth(req, res);
+  const user = await requireAuth(req, res);
   if (!user) return;
 
-  if (process.env.AI_ENABLED !== "true") {
+  const admin = getAdminClient();
+
+  const { data: settings } = await admin
+    .from("user_settings")
+    .select("ai_enabled, groq_api_key")
+    .eq("user_id", user.id)
+    .single();
+
+  if (!settings?.ai_enabled) {
     return res.status(403).json({ error: "AI is disabled." });
   }
 
-  if (!process.env.GROQ_API_KEY) {
+  if (!settings?.groq_api_key) {
     return res.status(403).json({ error: "No Groq API key configured." });
   }
 
@@ -39,7 +48,7 @@ ${body}`;
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        Authorization: `Bearer ${settings.groq_api_key}`,
       },
       body: JSON.stringify({
         model: "llama3-8b-8192",
