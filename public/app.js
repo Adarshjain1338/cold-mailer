@@ -29,12 +29,19 @@ let tplResumeOverride = null;
 
 // ── INIT ──
 document.addEventListener("DOMContentLoaded", async () => {
-  await Promise.all([
-    loadGlobalResume(),
-    loadTemplates(),
-    checkAiAvailability(),
-    checkNeedsSetup(),
-  ]);
+  showLoader("Loading your workspace...");
+
+  try {
+    await Promise.all([
+      loadGlobalResume(),
+      loadTemplates(),
+      checkAiAvailability(),
+      checkNeedsSetup(),
+    ]);
+  } catch (e) {
+    console.error("Init error:", e);
+  }
+
   renderTemplates();
   updateResumeBanner();
   setupSidebar();
@@ -47,29 +54,64 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupAiToggle();
   setupAiButtons();
   setupLogout();
+
+  hideLoader();
 });
 
-// ── NEEDS SETUP CHECK ──
+// ── LOADER ──
+function showLoader(msg) {
+  const el = document.getElementById("appLoader");
+  if (!el) return;
+  el.querySelector(".app-loader-sub").textContent = msg || "";
+  el.classList.remove("hidden");
+}
+
+function hideLoader() {
+  const el = document.getElementById("appLoader");
+  if (!el) return;
+  el.classList.add("hidden");
+  setTimeout(() => { el.style.display = "none"; }, 300);
+}
+
+// ── SPINNER HELPER ──
+function setButtonLoading(btn, loading, originalText) {
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.classList.add("btn-loading");
+    btn.dataset.originalText = btn.innerHTML;
+    const isWhite = btn.classList.contains("btn-send") || btn.classList.contains("btn-send-top") || btn.classList.contains("btn-save");
+    btn.innerHTML = `<span class="spinner ${isWhite ? "spinner-white" : "spinner-sm"}" style="vertical-align:middle;margin-right:6px"></span>${originalText || ""}`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove("btn-loading");
+    if (btn.dataset.originalText) {
+      btn.innerHTML = btn.dataset.originalText;
+    }
+  }
+}
+
+// ── NEEDS SETUP ──
 async function checkNeedsSetup() {
   try {
     const res = await fetch("/api/config", { headers: authHeaders() });
     if (handleUnauth(res)) return;
     const data = await res.json();
     if (data.needsSetup) {
-      showToast("Please configure your Gmail settings to send emails.", "error");
-      setTimeout(() => openSettings(), 1500);
+      setTimeout(() => {
+        showToast("Configure Gmail settings to start sending.", "error");
+        setTimeout(() => openSettings(), 1800);
+      }, 600);
     }
   } catch (e) {}
 }
 
-// ── LOAD TEMPLATES FROM SUPABASE ──
+// ── LOAD TEMPLATES ──
 async function loadTemplates() {
   try {
     const res = await fetch("/api/templates", { headers: authHeaders() });
     if (handleUnauth(res)) return;
-    if (res.ok) {
-      templates = await res.json();
-    }
+    if (res.ok) templates = await res.json();
   } catch (e) {
     console.error("Failed to load templates:", e.message);
   }
@@ -120,11 +162,9 @@ function setupAiButtons() {
 
 async function aiCompose() {
   const prompt = document.getElementById("aiPrompt").value.trim();
-  if (!prompt) {
-    showToast("Describe the email purpose first.", "error");
-    return;
-  }
-  setAiLoading(true);
+  if (!prompt) { showToast("Describe the email purpose first.", "error"); return; }
+  const btn = document.getElementById("btnAiCompose");
+  setButtonLoading(btn, true, "");
   try {
     const res = await fetch("/api/ai", {
       method: "POST",
@@ -142,17 +182,15 @@ async function aiCompose() {
   } catch (e) {
     showToast("Network error.", "error");
   } finally {
-    setAiLoading(false);
+    setButtonLoading(btn, false);
   }
 }
 
 async function aiImprove() {
   const body = document.getElementById("body").value.trim();
-  if (!body) {
-    showToast("Write something first, then improve it.", "error");
-    return;
-  }
-  setAiLoading(true);
+  if (!body) { showToast("Write something first.", "error"); return; }
+  const btn = document.getElementById("btnAiImprove");
+  setButtonLoading(btn, true, "");
   try {
     const res = await fetch("/api/ai", {
       method: "POST",
@@ -170,15 +208,8 @@ async function aiImprove() {
   } catch (e) {
     showToast("Network error.", "error");
   } finally {
-    setAiLoading(false);
+    setButtonLoading(btn, false);
   }
-}
-
-function setAiLoading(loading) {
-  document.getElementById("btnAiCompose").disabled = loading;
-  document.getElementById("btnAiImprove").disabled = loading;
-  document.getElementById("btnAiCompose").textContent = loading ? "..." : "Compose";
-  document.getElementById("btnAiImprove").textContent = loading ? "..." : "Improve";
 }
 
 // ── RENDER TEMPLATES ──
@@ -189,16 +220,14 @@ function renderTemplates() {
     return;
   }
   list.innerHTML = templates
-    .map(
-      (t) => `
+    .map((t) => `
       <div class="template-item ${t.id === activeTemplateId ? "active" : ""}" data-id="${t.id}">
         <span class="template-name" title="${escHtml(t.name)}">${escHtml(t.name)}</span>
         <div class="template-actions">
           <button class="btn-tpl-edit" data-id="${t.id}">Edit</button>
           <button class="btn-tpl-delete" data-id="${t.id}">Delete</button>
         </div>
-      </div>`
-    )
+      </div>`)
     .join("");
 
   list.querySelectorAll(".template-item").forEach((el) => {
@@ -217,6 +246,11 @@ function renderTemplates() {
   });
 }
 
+function renderTemplatesSkeleton() {
+  const list = document.getElementById("templateList");
+  list.innerHTML = Array(3).fill(`<div class="skeleton skeleton-item"></div>`).join("");
+}
+
 // ── LOAD TEMPLATE INTO FORM ──
 async function loadTemplate(id) {
   const tpl = templates.find((t) => t.id === id);
@@ -226,8 +260,8 @@ async function loadTemplate(id) {
   document.getElementById("to").focus();
   activeTemplateId = id;
   renderTemplates();
-  await updateResumeBanner();
   closeMobileSidebar();
+  updateResumeBanner();
   showToast("Template loaded.", "success");
 }
 
@@ -248,7 +282,7 @@ async function updateResumeBanner() {
       if (data?.name) {
         banner.style.display = "flex";
         bannerName.textContent = data.name;
-        bannerTag.textContent = "Template override";
+        bannerTag.textContent = "Template";
         return;
       }
     } catch (e) {}
@@ -273,9 +307,7 @@ async function loadGlobalResume() {
       body: JSON.stringify({ action: "get", scope: "global" }),
     });
     if (res.ok) globalResume = await res.json();
-  } catch (e) {
-    globalResume = null;
-  }
+  } catch (e) { globalResume = null; }
 }
 
 function setupGlobalResumeModal() {
@@ -294,12 +326,17 @@ function setupGlobalResumeModal() {
   document.getElementById("globalResumeInput").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const btn = document.getElementById("globalResumeUploadBtn");
+    setButtonLoading(btn, true, "");
     await uploadResume(file, "global", null);
+    setButtonLoading(btn, false);
     e.target.value = "";
   });
 
   document.getElementById("globalResumeDeleteBtn").addEventListener("click", async () => {
     if (!confirm("Remove global resume?")) return;
+    const btn = document.getElementById("globalResumeDeleteBtn");
+    setButtonLoading(btn, true, "");
     const res = await fetch("/api/resume", {
       method: "POST",
       headers: authHeaders(),
@@ -311,6 +348,7 @@ function setupGlobalResumeModal() {
       await updateResumeBanner();
       showToast("Global resume removed.", "error");
     }
+    setButtonLoading(btn, false);
   });
 }
 
@@ -394,7 +432,10 @@ function setupTemplateModal() {
     const file = e.target.files[0];
     if (!file) return;
     if (editingId) {
+      const btn = document.getElementById("tplResumeUploadBtn");
+      setButtonLoading(btn, true, "");
       await uploadResume(file, "template", editingId);
+      setButtonLoading(btn, false);
     } else {
       tplResumeOverride = { pendingFile: file };
       document.getElementById("tplResumeCurrentName").textContent = file.name;
@@ -406,8 +447,7 @@ function setupTemplateModal() {
   document.getElementById("tplResumeDeleteBtn").addEventListener("click", async () => {
     if (!confirm("Remove resume from this template?")) return;
     const btn = document.getElementById("tplResumeDeleteBtn");
-    btn.disabled = true;
-    btn.textContent = "Removing...";
+    setButtonLoading(btn, true, "");
     try {
       if (editingId && tplResumeOverride?.key) {
         const res = await fetch("/api/resume", {
@@ -417,7 +457,7 @@ function setupTemplateModal() {
         });
         if (!res.ok) {
           const data = await res.json();
-          showToast(data.error || "Failed to remove resume.", "error");
+          showToast(data.error || "Failed to remove.", "error");
           return;
         }
       }
@@ -425,12 +465,11 @@ function setupTemplateModal() {
       document.getElementById("tplResumeCurrentName").textContent = "No override set";
       document.getElementById("tplResumeDeleteBtn").style.display = "none";
       await updateResumeBanner();
-      showToast("Resume removed from template.", "error");
+      showToast("Resume removed.", "error");
     } catch (e) {
       showToast("Network error.", "error");
     } finally {
-      btn.disabled = false;
-      btn.textContent = "Remove";
+      setButtonLoading(btn, false);
     }
   });
 }
@@ -446,7 +485,7 @@ function openAddTemplate() {
   document.getElementById("tplResumeCurrentName").textContent = "No override set";
   document.getElementById("tplResumeDeleteBtn").style.display = "none";
   document.getElementById("templateModal").classList.add("open");
-  document.getElementById("tplName").focus();
+  setTimeout(() => document.getElementById("tplName").focus(), 100);
 }
 
 async function openEditTemplate(id) {
@@ -459,6 +498,8 @@ async function openEditTemplate(id) {
   document.getElementById("tplSubject").value = tpl.subject;
   document.getElementById("tplBody").value = tpl.body;
   document.getElementById("tplSignature").value = tpl.signature || "";
+  document.getElementById("tplResumeCurrentName").textContent = "Checking...";
+  document.getElementById("templateModal").classList.add("open");
 
   try {
     const res = await fetch("/api/resume", {
@@ -479,9 +520,6 @@ async function openEditTemplate(id) {
     document.getElementById("tplResumeCurrentName").textContent = "No override set";
     document.getElementById("tplResumeDeleteBtn").style.display = "none";
   }
-
-  document.getElementById("templateModal").classList.add("open");
-  document.getElementById("tplName").focus();
 }
 
 function closeTemplateModal() {
@@ -502,8 +540,7 @@ async function saveTemplate() {
   }
 
   const btn = document.getElementById("modalSave");
-  btn.disabled = true;
-  btn.textContent = "Saving...";
+  setButtonLoading(btn, true, "");
 
   try {
     let savedId = editingId;
@@ -516,12 +553,15 @@ async function saveTemplate() {
       });
       if (handleUnauth(res)) return;
       const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Failed to save.", "error");
-        return;
-      }
+      if (!res.ok) { showToast(data.error || "Failed to save.", "error"); return; }
       templates = templates.map((t) => (t.id === editingId ? data : t));
     } else {
+      // Optimistic — add immediately
+      const tempId = `temp_${Date.now()}`;
+      const optimistic = { id: tempId, name, subject, body, signature };
+      templates.unshift(optimistic);
+      renderTemplates();
+
       const res = await fetch("/api/templates", {
         method: "POST",
         headers: authHeaders(),
@@ -530,11 +570,14 @@ async function saveTemplate() {
       if (handleUnauth(res)) return;
       const data = await res.json();
       if (!res.ok) {
+        // Rollback
+        templates = templates.filter((t) => t.id !== tempId);
+        renderTemplates();
         showToast(data.error || "Failed to save.", "error");
         return;
       }
       savedId = data.id;
-      templates.unshift(data);
+      templates = templates.map((t) => (t.id === tempId ? data : t));
     }
 
     if (tplResumeOverride?.pendingFile) {
@@ -547,13 +590,18 @@ async function saveTemplate() {
   } catch (e) {
     showToast("Network error.", "error");
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Save Template";
+    setButtonLoading(btn, false);
   }
 }
 
 async function deleteTemplate(id) {
   if (!confirm("Delete this template?")) return;
+
+  // Optimistic remove
+  const removed = templates.find((t) => t.id === id);
+  templates = templates.filter((t) => t.id !== id);
+  if (activeTemplateId === id) { activeTemplateId = null; updateResumeBanner(); }
+  renderTemplates();
 
   const res = await fetch("/api/templates", {
     method: "DELETE",
@@ -563,23 +611,24 @@ async function deleteTemplate(id) {
 
   if (handleUnauth(res)) return;
 
-  if (res.ok) {
-    templates = templates.filter((t) => t.id !== id);
-    if (activeTemplateId === id) {
-      activeTemplateId = null;
-      updateResumeBanner();
-    }
-    fetch("/api/resume", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ action: "delete", scope: "template", templateId: id }),
-    }).catch(() => {});
+  if (!res.ok) {
+    // Rollback
+    templates.unshift(removed);
     renderTemplates();
-    showToast("Template deleted.", "error");
+    showToast("Failed to delete template.", "error");
+    return;
   }
+
+  fetch("/api/resume", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ action: "delete", scope: "template", templateId: id }),
+  }).catch(() => {});
+
+  showToast("Template deleted.", "error");
 }
 
-// ── HISTORY MODAL ──
+// ── HISTORY ──
 function setupHistoryModal() {
   document.getElementById("btnHistory").addEventListener("click", openHistory);
   document.getElementById("historyClose").addEventListener("click", closeHistory);
@@ -592,8 +641,10 @@ function setupHistoryModal() {
 }
 
 async function openHistory() {
-  await loadHistory();
   document.getElementById("historyModal").classList.add("open");
+  const list = document.getElementById("historyList");
+  list.innerHTML = Array(3).fill(`<div class="skeleton skeleton-item"></div>`).join("");
+  await loadHistory();
 }
 
 function closeHistory() {
@@ -604,12 +655,8 @@ async function loadHistory() {
   try {
     const res = await fetch("/api/history", { headers: authHeaders() });
     if (handleUnauth(res)) return;
-    if (res.ok) {
-      history = await res.json();
-    }
-  } catch (e) {
-    console.error("Failed to load history:", e.message);
-  }
+    if (res.ok) history = await res.json();
+  } catch (e) { console.error("Failed to load history:", e.message); }
   renderHistory();
 }
 
@@ -620,36 +667,32 @@ function renderHistory() {
     return;
   }
   list.innerHTML = history
-    .map(
-      (h) => `
+    .map((h) => `
       <div class="history-item">
         <span class="history-to">${escHtml(h.recipients.join(", "))}</span>
         <span class="history-subject">${escHtml(h.subject)}</span>
         <span class="history-template">${escHtml(h.status)}</span>
         <span class="history-date">${new Date(h.sent_at).toLocaleString()}</span>
-      </div>`
-    )
+      </div>`)
     .join("");
 }
 
 async function clearHistory() {
   if (!confirm("Clear all send history?")) return;
+  const btn = document.getElementById("historyClear");
+  setButtonLoading(btn, true, "");
   const res = await fetch("/api/history", {
     method: "DELETE",
     headers: authHeaders(),
     body: JSON.stringify({ all: true }),
   });
-  if (res.ok) {
-    history = [];
-    renderHistory();
-    showToast("History cleared.", "error");
-  }
+  if (res.ok) { history = []; renderHistory(); showToast("History cleared.", "error"); }
+  setButtonLoading(btn, false);
 }
 
 async function sendDailySummary() {
   const btn = document.getElementById("btnSendSummary");
-  btn.disabled = true;
-  btn.textContent = "Sending...";
+  setButtonLoading(btn, true, "");
   try {
     const res = await fetch("/api/summary", {
       method: "POST",
@@ -657,20 +700,15 @@ async function sendDailySummary() {
     });
     if (handleUnauth(res)) return;
     const data = await res.json();
-    if (res.ok) {
-      showToast("Summary sent to your inbox.", "success");
-    } else {
-      showToast(data.error || "Failed to send summary.", "error");
-    }
+    showToast(res.ok ? "Summary sent to your inbox." : (data.error || "Failed."), res.ok ? "success" : "error");
   } catch (e) {
     showToast("Network error.", "error");
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Email Me Today's Summary";
+    setButtonLoading(btn, false);
   }
 }
 
-// ── SIGNATURE MODAL ──
+// ── SIGNATURE ──
 function setupSignatureModal() {
   document.getElementById("btnSignature").addEventListener("click", openSignature);
   document.getElementById("signatureClose").addEventListener("click", closeSignature);
@@ -698,7 +736,7 @@ function saveSignature() {
   showToast("Signature saved.", "success");
 }
 
-// ── SETTINGS MODAL ──
+// ── SETTINGS ──
 function setupSettingsModal() {
   document.getElementById("btnSettings").addEventListener("click", openSettings);
   document.getElementById("settingsClose").addEventListener("click", closeSettings);
@@ -719,6 +757,10 @@ function setupSettingsModal() {
 }
 
 async function openSettings() {
+  document.getElementById("settingsModal").classList.add("open");
+  const btn = document.getElementById("settingsSave");
+  btn.disabled = true;
+
   try {
     const res = await fetch("/api/settings", { headers: authHeaders() });
     if (handleUnauth(res)) return;
@@ -729,16 +771,13 @@ async function openSettings() {
     document.getElementById("settingsGroqKey").value = "";
     document.getElementById("settingsAiEnabled").checked = data.aiEnabled || false;
 
-    // Show setup warning if not configured
     const warningEl = document.getElementById("settingsSetupWarning");
-    if (warningEl) {
-      warningEl.style.display = data.needsSetup ? "block" : "none";
-    }
+    if (warningEl) warningEl.style.display = data.needsSetup ? "block" : "none";
   } catch (e) {
     showToast("Failed to load settings.", "error");
-    return;
+  } finally {
+    btn.disabled = false;
   }
-  document.getElementById("settingsModal").classList.add("open");
 }
 
 function closeSettings() {
@@ -752,19 +791,11 @@ async function saveSettings() {
   const groqApiKey = document.getElementById("settingsGroqKey").value.trim();
   const aiEnabled = document.getElementById("settingsAiEnabled").checked;
 
-  if (!fromName || !gmailUser) {
-    showToast("Sender name and Gmail address are required.", "error");
-    return;
-  }
-
-  if (!appPassword) {
-    showToast("App password is required.", "error");
-    return;
-  }
+  if (!fromName || !gmailUser) { showToast("Sender name and Gmail address are required.", "error"); return; }
+  if (!appPassword) { showToast("App password is required.", "error"); return; }
 
   const btn = document.getElementById("settingsSave");
-  btn.disabled = true;
-  btn.textContent = "Saving...";
+  setButtonLoading(btn, true, "");
 
   try {
     const payload = { fromName, gmailUser, aiEnabled, appPassword };
@@ -782,40 +813,32 @@ async function saveSettings() {
       closeSettings();
       await checkAiAvailability();
     } else {
-      showToast(data.error || "Failed to save settings.", "error");
+      showToast(data.error || "Failed to save.", "error");
     }
   } catch (e) {
     showToast("Network error.", "error");
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Save Settings";
+    setButtonLoading(btn, false);
   }
 }
 
 // ── SEND MAIL ──
 function setupSendButton() {
   document.getElementById("sendBtn").addEventListener("click", sendMail);
+  document.getElementById("sendBtnTop").addEventListener("click", sendMail);
 }
 
 async function sendMail() {
   const to = document.getElementById("to").value.trim();
   const subject = document.getElementById("subject").value.trim();
   let body = document.getElementById("body").value.trim();
-  const btn = document.getElementById("sendBtn");
-  const btnText = document.getElementById("btnText");
 
-  if (!to || !subject || !body) {
-    showToast("All fields are required.", "error");
-    return;
-  }
+  if (!to || !subject || !body) { showToast("All fields are required.", "error"); return; }
 
   const recipients = to.split(",").map((e) => e.trim()).filter((e) => e.length > 0);
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const invalid = recipients.find((e) => !emailRegex.test(e));
-  if (invalid) {
-    showToast(`Invalid email: ${invalid}`, "error");
-    return;
-  }
+  if (invalid) { showToast(`Invalid email: ${invalid}`, "error"); return; }
 
   // Resolve signature
   const activeTpl = templates.find((t) => t.id === activeTemplateId);
@@ -834,10 +857,7 @@ async function sendMail() {
         body: JSON.stringify({ action: "get", scope: "template", templateId: activeTemplateId }),
       });
       const data = await res.json();
-      if (data?.url) {
-        attachmentUrl = data.url;
-        attachmentName = data.name;
-      }
+      if (data?.url) { attachmentUrl = data.url; attachmentName = data.name; }
     } catch (e) {}
   }
 
@@ -846,8 +866,10 @@ async function sendMail() {
     attachmentName = globalResume.name;
   }
 
-  btn.disabled = true;
-  btnText.textContent = "Sending...";
+  const btnDesktop = document.getElementById("sendBtn");
+  const btnMobile = document.getElementById("sendBtnTop");
+  setButtonLoading(btnDesktop, true, "");
+  setButtonLoading(btnMobile, true, "");
 
   try {
     const res = await fetch("/api/send", {
@@ -859,7 +881,7 @@ async function sendMail() {
     const data = await res.json();
 
     if (data.needsSetup) {
-      showToast("Please configure Gmail settings first.", "error");
+      showToast("Configure Gmail settings first.", "error");
       setTimeout(() => openSettings(), 1000);
       return;
     }
@@ -871,23 +893,21 @@ async function sendMail() {
       document.getElementById("body").value = "";
       activeTemplateId = null;
       renderTemplates();
-      await updateResumeBanner();
+      updateResumeBanner();
     } else {
       showToast(data.error || "Something went wrong.", "error");
     }
   } catch (e) {
     showToast("Network error. Try again.", "error");
   } finally {
-    btn.disabled = false;
-    btnText.textContent = "Send";
+    setButtonLoading(btnDesktop, false);
+    setButtonLoading(btnMobile, false);
   }
 }
 
 // ── MOBILE NAV ──
 function mobileNav(tab) {
-  document.querySelectorAll(".bottom-nav-item").forEach((el) => {
-    el.classList.remove("active");
-  });
+  document.querySelectorAll(".bottom-nav-item").forEach((el) => el.classList.remove("active"));
   document.getElementById(`nav${tab.charAt(0).toUpperCase() + tab.slice(1)}`)?.classList.add("active");
 
   if (tab === "templates") {
@@ -922,9 +942,7 @@ function showToast(message, type) {
   const toast = document.getElementById("toast");
   toast.textContent = message;
   toast.className = `toast ${type}`;
-  setTimeout(() => {
-    toast.className = "toast hidden";
-  }, 4000);
+  setTimeout(() => { toast.className = "toast hidden"; }, 4000);
 }
 
 function escHtml(str) {

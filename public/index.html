@@ -2,22 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Cold Mailer</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-
+<!-- APP LOADER -->
+<div class="app-loader" id="appLoader">
+  <div class="spinner" style="width:20px;height:20px;border-width:2px"></div>
+  <span class="app-loader-title">Cold Mailer</span>
+  <span class="app-loader-sub">Loading your workspace...</span>
+</div>
     <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
-
       <div class="sidebar-header">
         <span class="sidebar-title">Templates</span>
         <button class="btn-add-template" id="btnAddTemplate">+ New</button>
       </div>
-
       <div class="template-list" id="templateList"></div>
-
       <div class="sidebar-footer">
         <button class="btn-footer-action" id="btnGlobalResume">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -40,69 +42,81 @@
           Logout
         </button>
       </div>
-
     </aside>
 
     <!-- MAIN -->
     <main class="main" id="main">
 
+      <!-- TOPBAR -->
       <div class="topbar">
         <button class="btn-toggle-sidebar" id="btnToggleSidebar">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
         <span class="app-title">Cold Mailer</span>
-        <div class="ai-toggle-wrap" id="aiToggleWrap" style="display:none">
-          <span class="ai-label">AI</span>
-          <label class="toggle">
-            <input type="checkbox" id="aiToggle" />
-            <span class="slider"></span>
-          </label>
+        <div class="topbar-right">
+          <div class="ai-toggle-wrap" id="aiToggleWrap" style="display:none">
+            <span class="ai-label">AI</span>
+            <label class="toggle">
+              <input type="checkbox" id="aiToggle" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <button class="btn-send-top" id="sendBtnTop">
+            <span id="btnTextTop">Send</span>
+          </button>
         </div>
       </div>
 
+      <!-- RESUME BANNER -->
+      <div class="resume-banner" id="resumeBanner" style="display:none">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="resume-banner-name" id="resumeBannerName"></span>
+        <span class="resume-banner-tag" id="resumeBannerTag"></span>
+      </div>
+
+      <!-- FORM -->
       <div class="form-wrap">
 
-        <div class="resume-banner" id="resumeBanner" style="display:none">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <span class="resume-banner-name" id="resumeBannerName"></span>
-          <span class="resume-banner-tag" id="resumeBannerTag"></span>
-        </div>
-
-        <div class="field">
-          <label for="to">To</label>
+        <div class="form-field">
+          <label class="form-label" for="to">To</label>
           <input
             type="text"
             id="to"
+            class="form-input"
             placeholder="recipient@example.com, another@example.com"
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="none"
           />
-          <span class="field-hint">Separate multiple addresses with a comma — each receives an individual email</span>
+          <span class="field-hint">Comma separated — each gets an individual email</span>
         </div>
 
-        <div class="field">
-          <label for="subject">Subject</label>
+        <div class="form-field">
+          <label class="form-label" for="subject">Subject</label>
           <input
             type="text"
             id="subject"
+            class="form-input"
             placeholder="Subject line"
             autocomplete="off"
           />
         </div>
 
-        <div class="field">
-          <label for="body">Message</label>
+        <div class="form-field form-field-grow">
+          <label class="form-label" for="body">Message</label>
           <textarea
             id="body"
-            rows="12"
-            placeholder="Write your message or select a template from the sidebar..."
+            class="form-input form-textarea"
+            placeholder="Write your message or pick a template..."
           ></textarea>
         </div>
 
+        <!-- AI BAR -->
         <div class="ai-bar" id="aiBar" style="display:none">
           <input
             type="text"
             id="aiPrompt"
-            placeholder='Describe the email purpose, e.g. "frontend developer role at a product startup"'
+            placeholder='e.g. "frontend role at a product startup"'
           />
           <div class="ai-bar-actions">
             <button class="btn-ai" id="btnAiCompose">Compose</button>
@@ -110,6 +124,7 @@
           </div>
         </div>
 
+        <!-- DESKTOP SEND BUTTON -->
         <div class="form-actions">
           <button class="btn-send" id="sendBtn">
             <span id="btnText">Send</span>
@@ -124,15 +139,11 @@
     <!-- MODAL: Add / Edit Template -->
     <div class="modal-overlay" id="templateModal">
       <div class="modal">
-        
         <div class="modal-header">
           <span id="modalTitle">New Template</span>
           <button class="modal-close" id="modalClose">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-        </div>
-        <div id="settingsSetupWarning" style="display:none" class="setup-warning">
-          Gmail is not configured. Set your sender name, Gmail address and app password to start sending emails.
         </div>
         <div class="field">
           <label>Template Name</label>
@@ -144,7 +155,7 @@
         </div>
         <div class="field">
           <label>Body</label>
-          <textarea id="tplBody" rows="7" placeholder="Write the email body..."></textarea>
+          <textarea id="tplBody" rows="6" placeholder="Write the email body..."></textarea>
         </div>
         <div class="field">
           <label>Signature <span class="label-optional">optional — overrides global</span></label>
@@ -152,7 +163,7 @@
         </div>
         <div class="field">
           <label>Resume <span class="label-optional">optional — overrides global</span></label>
-          <div class="file-upload-row" id="tplResumeRow">
+          <div class="file-upload-row">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span class="file-upload-name" id="tplResumeCurrentName">No override set</span>
             <input type="file" id="tplResumeInput" accept=".pdf,.doc,.docx" style="display:none" />
@@ -219,10 +230,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <p class="modal-desc">Appended to every email. Each template can override this with its own signature.</p>
+        <p class="modal-desc">Appended to every email. Each template can override with its own signature.</p>
         <div class="field">
           <label>Signature</label>
-          <textarea id="signatureText" rows="4" placeholder="e.g. Adarsh Shah | Frontend Developer | adarsh.dev | +91 XXXXX"></textarea>
+          <textarea id="signatureText" rows="4" placeholder="e.g. Adarsh | Frontend Developer | adarsh.dev"></textarea>
         </div>
         <div class="modal-actions">
           <button class="btn-cancel" id="signatureCancel">Cancel</button>
@@ -240,9 +251,11 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-
+        <div id="settingsSetupWarning" style="display:none" class="setup-warning">
+          Gmail is not configured. Set your sender name, Gmail address and app password to start sending emails.
+        </div>
         <div class="settings-section">
-          <div class="settings-section-title">Gmail Configuration</div>
+          <div class="settings-section-title">Gmail</div>
           <div class="field">
             <label>Sender Name</label>
             <input type="text" id="settingsFromName" placeholder="Your Full Name" />
@@ -252,7 +265,7 @@
             <input type="email" id="settingsGmailUser" placeholder="yourgmail@gmail.com" />
           </div>
           <div class="field">
-            <label>App Password <span class="label-optional">leave blank to keep current</span></label>
+            <label>App Password</label>
             <div class="password-wrap">
               <input type="password" id="settingsAppPassword" placeholder="16-character app password" />
               <button class="btn-toggle-pass" id="settingsTogglePass" tabindex="-1">
@@ -262,17 +275,15 @@
             </div>
           </div>
         </div>
-
         <div class="settings-section">
-          <div class="settings-section-title">AI Configuration</div>
+          <div class="settings-section-title">AI</div>
           <div class="field">
-            <label>Groq API Key <span class="label-optional">leave blank to keep current</span></label>
+            <label>Groq API Key</label>
             <input type="password" id="settingsGroqKey" placeholder="gsk_..." />
           </div>
           <div class="field">
-            <label>AI Features</label>
             <div class="settings-toggle-row">
-              <span class="settings-toggle-label">Enable AI compose and improve</span>
+              <span class="settings-toggle-label">Enable AI features</span>
               <label class="toggle">
                 <input type="checkbox" id="settingsAiEnabled" />
                 <span class="slider"></span>
@@ -280,37 +291,36 @@
             </div>
           </div>
         </div>
-
         <div class="modal-actions">
           <button class="btn-cancel" id="settingsCancel">Cancel</button>
-          <button class="btn-save" id="settingsSave">Save Settings</button>
+          <button class="btn-save" id="settingsSave">Save</button>
         </div>
       </div>
     </div>
 
+    <!-- MOBILE BOTTOM NAV -->
+    <nav class="bottom-nav" id="bottomNav">
+      <button class="bottom-nav-item active" id="navCompose" onclick="mobileNav('compose')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Compose
+      </button>
+      <button class="bottom-nav-item" id="navTemplates" onclick="mobileNav('templates')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Templates
+      </button>
+      <button class="bottom-nav-item" id="navHistory" onclick="mobileNav('history')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        History
+      </button>
+      <button class="bottom-nav-item" id="navMore" onclick="mobileNav('more')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        More
+      </button>
+    </nav>
+
+    <!-- MOBILE SHEET OVERLAY -->
+    <div class="sheet-overlay" id="sheetOverlay" onclick="closeMobileSidebar()"></div>
+
     <script src="app.js"></script>
   </body>
 </html>
-
-<!-- MOBILE BOTTOM NAV -->
-<nav class="bottom-nav" id="bottomNav">
-  <button class="bottom-nav-item active" id="navCompose" onclick="mobileNav('compose')">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-    Compose
-  </button>
-  <button class="bottom-nav-item" id="navTemplates" onclick="mobileNav('templates')">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-    Templates
-  </button>
-  <button class="bottom-nav-item" id="navHistory" onclick="mobileNav('history')">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    History
-  </button>
-  <button class="bottom-nav-item" id="navMore" onclick="mobileNav('more')">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-    More
-  </button>
-</nav>
-
-<!-- MOBILE SHEET OVERLAY -->
-<div class="sheet-overlay" id="sheetOverlay" onclick="closeMobileSidebar()"></div>
