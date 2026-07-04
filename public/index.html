@@ -54,6 +54,9 @@
         </button>
         <span class="app-title">Cold Mailer</span>
         <div class="topbar-right">
+          <button class="btn-schedule-toggle" id="btnScheduleToggle" title="Schedule send">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+</button>
           <div class="ai-toggle-wrap" id="aiToggleWrap" style="display:none">
             <span class="ai-label">AI</span>
             <label class="toggle">
@@ -73,10 +76,13 @@
         <span class="resume-banner-name" id="resumeBannerName"></span>
         <span class="resume-banner-tag" id="resumeBannerTag"></span>
       </div>
-
       <!-- FORM -->
       <div class="form-wrap">
-
+        <!-- SCHEDULE SEND -->
+        <div class="form-field" id="scheduleField" style="display:none">
+          <label class="form-label">Scheduled For</label>
+          <input type="datetime-local" id="scheduledAt" class="form-input" />
+        </div>
         <div class="form-field">
           <label class="form-label" for="to">To</label>
           <input

@@ -4,5 +4,11 @@
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/login", "destination": "/public/login.html" },
     { "source": "/", "destination": "/public/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/process-scheduled",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }

@@ -54,7 +54,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupAiToggle();
   setupAiButtons();
   setupLogout();
-
+  setupScheduleToggle();
+  setupPersonalize();
   hideLoader();
 });
 
@@ -644,7 +645,9 @@ async function openHistory() {
   document.getElementById("historyModal").classList.add("open");
   const list = document.getElementById("historyList");
   list.innerHTML = Array(3).fill(`<div class="skeleton skeleton-item"></div>`).join("");
-  await loadHistory();
+  document.getElementById("scheduledList").innerHTML =
+    `<div class="skeleton skeleton-item"></div>`;
+  await Promise.all([loadHistory(), loadScheduled()]);
 }
 
 function closeHistory() {
@@ -655,25 +658,43 @@ async function loadHistory() {
   try {
     const res = await fetch("/api/history", { headers: authHeaders() });
     if (handleUnauth(res)) return;
-    if (res.ok) history = await res.json();
-  } catch (e) { console.error("Failed to load history:", e.message); }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("History error:", err);
+      history = [];
+    } else {
+      const data = await res.json();
+      history = Array.isArray(data) ? data : [];
+    }
+  } catch (e) {
+    console.error("Failed to load history:", e.message);
+    history = [];
+  }
   renderHistory();
 }
 
 function renderHistory() {
   const list = document.getElementById("historyList");
-  if (history.length === 0) {
+  if (!list) return;
+
+  if (!history || history.length === 0) {
     list.innerHTML = `<div class="history-empty">No emails sent yet.</div>`;
     return;
   }
+
   list.innerHTML = history
-    .map((h) => `
-      <div class="history-item">
-        <span class="history-to">${escHtml(h.recipients.join(", "))}</span>
-        <span class="history-subject">${escHtml(h.subject)}</span>
-        <span class="history-template">${escHtml(h.status)}</span>
-        <span class="history-date">${new Date(h.sent_at).toLocaleString()}</span>
-      </div>`)
+    .map((h) => {
+      const recipients = Array.isArray(h.recipients)
+        ? h.recipients.join(", ")
+        : h.recipients || "Unknown";
+      return `
+        <div class="history-item">
+          <span class="history-to">${escHtml(recipients)}</span>
+          <span class="history-subject">${escHtml(h.subject || "")}</span>
+          <span class="history-template">${escHtml(h.status || "")}</span>
+          <span class="history-date">${h.sent_at ? new Date(h.sent_at).toLocaleString() : ""}</span>
+        </div>`;
+    })
     .join("");
 }
 
@@ -872,6 +893,39 @@ async function sendMail() {
   setButtonLoading(btnMobile, true, "");
 
   try {
+    // ── SCHEDULED SEND ──
+    if (scheduleEnabled) {
+      const scheduledAt = document.getElementById("scheduledAt").value;
+      if (!scheduledAt) { showToast("Pick a date and time to schedule.", "error"); return; }
+
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          to, subject, body,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+          attachmentUrl, attachmentName,
+          templateId: activeTemplateId || null,
+        }),
+      });
+      if (handleUnauth(res)) return;
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast(`Email scheduled for ${new Date(scheduledAt).toLocaleString()}.`, "success");
+        document.getElementById("to").value = "";
+        document.getElementById("subject").value = "";
+        document.getElementById("body").value = "";
+        activeTemplateId = null;
+        renderTemplates();
+        updateResumeBanner();
+      } else {
+        showToast(data.error || "Failed to schedule.", "error");
+      }
+      return;
+    }
+
+    // ── IMMEDIATE SEND ──
     const res = await fetch("/api/send", {
       method: "POST",
       headers: authHeaders(),
@@ -935,6 +989,128 @@ function closeMobileSidebar() {
   const navTemplates = document.getElementById("navTemplates");
   if (navCompose) navCompose.classList.add("active");
   if (navTemplates) navTemplates.classList.remove("active");
+}
+
+// ── SCHEDULE SEND ──
+let scheduleEnabled = false;
+
+function setupScheduleToggle() {
+  const btn = document.getElementById("btnScheduleToggle");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    scheduleEnabled = !scheduleEnabled;
+    btn.classList.toggle("active", scheduleEnabled);
+    const field = document.getElementById("scheduleField");
+    if (field) field.style.display = scheduleEnabled ? "block" : "none";
+
+    // Set default to 1 hour from now
+    if (scheduleEnabled) {
+      const dt = document.getElementById("scheduledAt");
+      const now = new Date();
+      now.setHours(now.getHours() + 1);
+      now.setSeconds(0);
+      now.setMilliseconds(0);
+      dt.value = now.toISOString().slice(0, 16);
+    }
+
+    // Update send button label
+    const btnTextTop = document.getElementById("btnTextTop");
+    const btnText = document.getElementById("btnText");
+    if (btnTextTop) btnTextTop.textContent = scheduleEnabled ? "Schedule" : "Send";
+    if (btnText) btnText.textContent = scheduleEnabled ? "Schedule" : "Send";
+  });
+}
+
+async function loadScheduled() {
+  try {
+    const res = await fetch("/api/schedule", { headers: authHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderScheduled(data);
+  } catch (e) {}
+}
+
+function renderScheduled(items) {
+  const list = document.getElementById("scheduledList");
+  if (!list) return;
+  if (!items || items.length === 0) {
+    list.innerHTML = `<div class="history-empty" style="padding:16px">No scheduled emails.</div>`;
+    return;
+  }
+  list.innerHTML = items.map((item) => `
+    <div class="scheduled-item">
+      <div class="scheduled-item-info">
+        <span class="scheduled-item-to">${escHtml(item.to_addresses.join(", "))}</span>
+        <span class="scheduled-item-time">${new Date(item.scheduled_at).toLocaleString()}</span>
+      </div>
+      <span class="scheduled-item-status">${item.status}</span>
+      <button class="btn-cancel-scheduled" data-id="${item.id}">Cancel</button>
+    </div>`).join("");
+
+  list.querySelectorAll(".btn-cancel-scheduled").forEach((btn) => {
+    btn.addEventListener("click", () => cancelScheduled(btn.dataset.id));
+  });
+}
+
+async function cancelScheduled(id) {
+  if (!confirm("Cancel this scheduled email?")) return;
+  const res = await fetch("/api/schedule", {
+    method: "DELETE",
+    headers: authHeaders(),
+    body: JSON.stringify({ id }),
+  });
+  if (res.ok) {
+    showToast("Scheduled email cancelled.", "error");
+    await loadScheduled();
+  }
+}
+
+// ── PERSONALIZE ──
+function setupPersonalize() {
+  const btn = document.getElementById("btnPersonalize");
+  if (!btn) return;
+  btn.addEventListener("click", personalize);
+}
+
+async function personalize() {
+  const body = document.getElementById("body").value.trim();
+  if (!body) { showToast("Write a message body first.", "error"); return; }
+
+  const name = document.getElementById("recipientName").value.trim();
+  const company = document.getElementById("recipientCompany").value.trim();
+  const role = document.getElementById("recipientRole").value.trim();
+  const email = document.getElementById("to").value.split(",")[0].trim();
+  const useAI = document.getElementById("aiToggle")?.checked || false;
+
+  const btn = document.getElementById("btnPersonalize");
+  setButtonLoading(btn, true, "");
+
+  try {
+    const res = await fetch("/api/personalize", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ email, name, company, role, body, useAI }),
+    });
+    if (handleUnauth(res)) return;
+    const data = await res.json();
+
+    if (res.ok) {
+      document.getElementById("body").value = data.body;
+      if (data.aiUsed && data.companyContext) {
+        showToast("Personalized with company data.", "success");
+      } else if (data.aiUsed) {
+        showToast("AI personalized your email.", "success");
+      } else {
+        showToast("Tokens replaced.", "success");
+      }
+    } else {
+      showToast(data.error || "Personalization failed.", "error");
+    }
+  } catch (e) {
+    showToast("Network error.", "error");
+  } finally {
+    setButtonLoading(btn, false);
+  }
 }
 
 // ── UTILS ──

@@ -27,6 +27,9 @@ app.use("/api/ai",        require("./api/ai"));
 app.use("/api/users",     require("./api/users"));
 app.use("/api/templates", require("./api/templates"));
 app.use("/api/history",   require("./api/history"));
+app.use("/api/schedule",     require("./api/schedule"));
+// app.use("/api/personalize",  require("./api/personalize"));
+app.use("/api/cron/process-scheduled", require("./api/cron/process-scheduled"));
 
 app.listen(3000, () => {
   console.log("Cold Mailer running at http://localhost:3000");

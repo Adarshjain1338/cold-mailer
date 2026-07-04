@@ -8,7 +8,6 @@ module.exports = async function handler(req, res) {
 
   const admin = getAdminClient();
 
-  // GET history
   if (req.method === "GET") {
     const { data, error } = await admin
       .from("email_history")
@@ -18,11 +17,20 @@ module.exports = async function handler(req, res) {
       .order("sent_at", { ascending: false })
       .limit(100);
 
-    if (error) return res.status(500).json({ error: error.message });
-    return res.status(200).json(data || []);
+    if (error) {
+      console.error("History fetch error:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Sanitize rows — ensure recipients is always an array
+    const sanitized = (data || []).map((h) => ({
+      ...h,
+      recipients: Array.isArray(h.recipients) ? h.recipients : [h.recipients].filter(Boolean),
+    }));
+
+    return res.status(200).json(sanitized);
   }
 
-  // DELETE — soft delete single entry
   if (req.method === "DELETE") {
     const { id, all } = req.body;
 
