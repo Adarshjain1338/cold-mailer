@@ -78,12 +78,11 @@ Return ONLY the improved email body.`;
           Authorization: `Bearer ${settings.groq_api_key}`,
         },
         body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
 
           // If this still fails, replace with a single user message
           messages: [
             {
-              role: "system",
+              role: "user",
               content: SYSTEM_PROMPT,
             },
             {
