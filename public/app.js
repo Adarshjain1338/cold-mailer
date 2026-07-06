@@ -895,27 +895,42 @@ async function sendMail() {
   try {
     // ── SCHEDULED SEND ──
     if (scheduleEnabled) {
-      const scheduledAt = document.getElementById("scheduledAt").value;
-      if (!scheduledAt) { showToast("Pick a date and time to schedule.", "error"); return; }
+      const scheduleDate = document.getElementById("scheduleDate").value;
+      const scheduleTime = document.getElementById("scheduleTime").value;
+
+      if (!scheduleDate) {
+        showToast("Please select a date to schedule.", "error");
+        return;
+      }
 
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
-          to, subject, body,
-          scheduledAt: new Date(scheduledAt).toISOString(),
-          attachmentUrl, attachmentName,
-          templateId: activeTemplateId || null,
+          to,
+          subject,
+          body,
+          date: scheduleDate,
+          time: scheduleTime || undefined, // undefined will use default 11:00 on backend
+          attachmentUrl,
+          attachmentName,
         }),
       });
+
       if (handleUnauth(res)) return;
       const data = await res.json();
 
       if (res.ok) {
-        showToast(`Email scheduled for ${new Date(scheduledAt).toLocaleString()}.`, "success");
+        const displayTime = scheduleTime || "11:00 (Default)";
+        showToast(
+          `Email scheduled for ${scheduleDate} at ${displayTime} IST.`,
+          "success"
+        );
         document.getElementById("to").value = "";
         document.getElementById("subject").value = "";
         document.getElementById("body").value = "";
+        document.getElementById("scheduleDate").value = "";
+        document.getElementById("scheduleTime").value = "";
         activeTemplateId = null;
         renderTemplates();
         updateResumeBanner();
@@ -1003,14 +1018,13 @@ function setupScheduleToggle() {
     const field = document.getElementById("scheduleField");
     if (field) field.style.display = scheduleEnabled ? "block" : "none";
 
-    // Set default to 1 hour from now
+    // Set default date to tomorrow (user can adjust)
     if (scheduleEnabled) {
-      const dt = document.getElementById("scheduledAt");
-      const now = new Date();
-      now.setHours(now.getHours() + 1);
-      now.setSeconds(0);
-      now.setMilliseconds(0);
-      dt.value = now.toISOString().slice(0, 16);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateStr = tomorrow.toISOString().split("T")[0];
+      document.getElementById("scheduleDate").value = dateStr;
+      document.getElementById("scheduleTime").value = ""; // Empty = uses 11:00 default
     }
 
     // Update send button label

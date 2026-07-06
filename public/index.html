@@ -80,8 +80,19 @@
       <div class="form-wrap">
         <!-- SCHEDULE SEND -->
         <div class="form-field" id="scheduleField" style="display:none">
-          <label class="form-label">Scheduled For</label>
-          <input type="datetime-local" id="scheduledAt" class="form-input" />
+          <label class="form-label">Schedule Send</label>
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <label class="form-label" style="font-size: 0.85em; color: var(--text-secondary);">Date (Asia/Kolkata)</label>
+              <input type="date" id="scheduleDate" class="form-input" required />
+            </div>
+            <div style="flex: 1;">
+              <label class="form-label" style="font-size: 0.85em; color: var(--text-secondary);">
+                Time <span style="color: var(--text-secondary);">(defaults to 11:00)</span>
+              </label>
+              <input type="time" id="scheduleTime" class="form-input" placeholder="11:00" />
+            </div>
+          </div>
         </div>
         <div class="form-field">
           <label class="form-label" for="to">To</label>
