@@ -3,7 +3,8 @@ require("dotenv").config();
 const { requireAuth } = require("../lib/auth");
 const { getAdminClient } = require("../lib/supabase");
 
-const SYSTEM_PROMPT = `You are an expert cold email copywriter. You write for job applications, freelance/collab pitches, paid partnership outreach, and content-creator sponsorships — the mode is given by context, infer it from the user's request.
+const SYSTEM_PROMPT = `You are an expert cold email copywriter.
+
 
 Rules:
 - Write like a sharp, confident human — not a corporate robot. Direct, warm, a little informal. Short sentences. No fluff, no "I hope this email finds you well", no "Dear Sir/Madam".
@@ -33,63 +34,121 @@ module.exports = async function handler(req, res) {
   if (!settings?.ai_enabled) {
     return res.status(403).json({ error: "AI is disabled." });
   }
+
   if (!settings?.groq_api_key) {
     return res.status(403).json({ error: "No Groq API key configured." });
   }
 
   const { mode, prompt, body } = req.body;
+
   let userMessage = "";
 
   if (mode === "compose") {
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'prompt'." });
     }
-    userMessage = `Write a cold email for this: "${prompt.trim()}"`;
+
+    userMessage = `Write a professional cold email for:
+
+${prompt.trim()}
+
+Return ONLY the email body.`;
   } else if (mode === "improve") {
     if (!body || typeof body !== "string" || !body.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'body'." });
     }
-    userMessage = `Rewrite this cold email to be sharper, more compelling, and more concise, keeping the same intent and any placeholders as-is:\n\n${body.trim()}`;
+
+    userMessage = `Improve this cold email:
+
+${body.trim()}
+
+Return ONLY the improved email body.`;
   } else {
     return res.status(400).json({ error: "Invalid mode." });
   }
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.groq_api_key}`,
-      },
-      body: JSON.stringify({
-        model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 400,
-        temperature: 0.8,
-      }),
-    });
+    console.log("Using model:", process.env.GROQ_MODEL || "llama-3.1-8b-instant");
+
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.groq_api_key}`,
+        },
+        body: JSON.stringify({
+          model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
+
+          // If this still fails, replace with a single user message
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: userMessage,
+            },
+          ],
+
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+      }
+    );
 
     const data = await response.json();
 
+    console.log("========== GROQ RESPONSE ==========");
+    console.log(JSON.stringify(data, null, 2));
+    console.log("===================================");
+
     if (!response.ok) {
-      console.error("Groq API error:", response.status, JSON.stringify(data));
       return res.status(502).json({
-        error: `AI provider error (${response.status}): ${data?.error?.message || "unknown"}`,
+        error:
+          data?.error?.message ||
+          `Groq returned HTTP ${response.status}`,
       });
     }
 
-    const result = data.choices?.[0]?.message?.content?.trim();
-    if (!result) {
-      console.error("Groq returned no content:", JSON.stringify(data));
-      return res.status(500).json({ error: "AI returned empty response." });
+    const choice = data?.choices?.[0];
+
+    console.log("Finish Reason:", choice?.finish_reason);
+    console.log("Message:", JSON.stringify(choice?.message, null, 2));
+
+    // Support multiple response formats
+    let result =
+      choice?.message?.content ??
+      choice?.text ??
+      "";
+
+    if (Array.isArray(result)) {
+      result = result
+        .map((x) => x.text || x.content || "")
+        .join("");
     }
 
-    return res.status(200).json({ result });
+    result = String(result).trim();
+
+    if (!result) {
+      console.error("No content returned from Groq.");
+      return res.status(500).json({
+        error: "AI returned empty response.",
+        finish_reason: choice?.finish_reason,
+        raw: choice,
+      });
+    }
+
+    return res.status(200).json({
+      result,
+    });
   } catch (err) {
-    console.error("AI error:", err.message);
-    return res.status(500).json({ error: "AI request failed." });
+    console.error(err);
+
+    return res.status(500).json({
+      error: err.message,
+    });
   }
-};
+}
