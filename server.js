@@ -16,20 +16,8 @@ app.get("/login", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// ── API ROUTES ──
-app.use("/api/auth",      require("./api/auth"));
-app.use("/api/config",    require("./api/config"));
-app.use("/api/settings",  require("./api/settings"));
-app.use("/api/send",      require("./api/send"));
-app.use("/api/summary",   require("./api/summary"));
-app.use("/api/resume",    require("./api/resume"));
-app.use("/api/ai",        require("./api/ai"));
-app.use("/api/users",     require("./api/users"));
-app.use("/api/templates", require("./api/templates"));
-app.use("/api/history",   require("./api/history"));
-app.use("/api/schedule",     require("./api/schedule"));
-// app.use("/api/personalize",  require("./api/personalize"));
-app.use("/api/cron/process-scheduled", require("./api/cron/process-scheduled"));
+// ── API ROUTES (all consolidated into single function) ──
+app.use("/api", require("./api/index"));
 
 app.listen(3000, () => {
   console.log("Cold Mailer running at http://localhost:3000");
