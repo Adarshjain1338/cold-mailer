@@ -1,6 +1,18 @@
+// api/ai.js
 require("dotenv").config();
 const { requireAuth } = require("../lib/auth");
 const { getAdminClient } = require("../lib/supabase");
+
+const SYSTEM_PROMPT = `You are an expert cold email copywriter. You write for job applications, freelance/collab pitches, paid partnership outreach, and content-creator sponsorships — the mode is given by context, infer it from the user's request.
+
+Rules:
+- Write like a sharp, confident human — not a corporate robot. Direct, warm, a little informal. Short sentences. No fluff, no "I hope this email finds you well", no "Dear Sir/Madam".
+- Open with a hook tied to the recipient or their work, not "My name is X and I am writing to...".
+- Never invent specific facts about the sender (no fake companies, fake metrics, fake names, fake links). Where personal detail is needed, use clear placeholders in [square brackets] like [your name], [portfolio link], [company name] — never guess a real value.
+- One clear ask at the end (reply, call, portfolio look, collab terms) — never vague.
+- No subject line. No greeting salutation block. No sign-off block like "Best regards, [Name]" — end on the ask itself.
+- Plain text only. No markdown, no bullet points, no headers.
+- Default length: under 150 words unless the user asks for longer.`;
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -21,7 +33,6 @@ module.exports = async function handler(req, res) {
   if (!settings?.ai_enabled) {
     return res.status(403).json({ error: "AI is disabled." });
   }
-
   if (!settings?.groq_api_key) {
     return res.status(403).json({ error: "No Groq API key configured." });
   }
@@ -30,21 +41,15 @@ module.exports = async function handler(req, res) {
   let userMessage = "";
 
   if (mode === "compose") {
-    if (!prompt || typeof prompt !== "string") {
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'prompt'." });
     }
-    userMessage = `Write a professional cold email for this purpose: "${prompt}".
-Return only the email body, no subject line, no salutation like "Dear Sir".
-Start directly. Keep it under 150 words. Conversational, not robotic.`;
+    userMessage = `Write a cold email for this: "${prompt.trim()}"`;
   } else if (mode === "improve") {
-    if (!body || typeof body !== "string") {
+    if (!body || typeof body !== "string" || !body.trim()) {
       return res.status(400).json({ error: "Missing or invalid 'body'." });
     }
-    userMessage = `Improve this cold email. Make it more professional, concise and compelling.
-Return only the improved email body, nothing else. Keep it under 150 words.
-
-Email:
-${body}`;
+    userMessage = `Rewrite this cold email to be sharper, more compelling, and more concise, keeping the same intent and any placeholders as-is:\n\n${body.trim()}`;
   } else {
     return res.status(400).json({ error: "Invalid mode." });
   }
@@ -58,9 +63,12 @@ ${body}`;
       },
       body: JSON.stringify({
         model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
-        messages: [{ role: "user", content: userMessage }],
-        max_tokens: 300,
-        temperature: 0.7,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 400,
+        temperature: 0.8,
       }),
     });
 
@@ -68,7 +76,6 @@ ${body}`;
 
     if (!response.ok) {
       console.error("Groq API error:", response.status, JSON.stringify(data));
-      // 401 = bad key, 429 = rate limit, 400 = bad/deprecated model or payload
       return res.status(502).json({
         error: `AI provider error (${response.status}): ${data?.error?.message || "unknown"}`,
       });
