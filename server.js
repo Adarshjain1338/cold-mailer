@@ -17,18 +17,18 @@ app.get("/login", (req, res) => {
 });
 
 // ── API ROUTES ──
-app.use("/auth",      require("../api/auth"));
-app.use("/config",    require("../api/config"));
-app.use("/settings",  require("../api/settings"));
-app.use("/send",      require("../api/send"));
-// app.use("/summary",   require("../api/summary"));
-app.use("/resume",    require("../api/resume"));
-app.use("/ai",        require("../api/ai"));
-app.use("/users",     require("../api/users"));
-app.use("/templates", require("../api/templates"));
-app.use("/history",   require("../api/history"));
-app.use("/schedule",  require("../api/schedule"));
-app.use("/cron/process-scheduled", require("../api/cron/process-scheduled"));
+app.use("/api/auth",      require("./api/auth"));
+app.use("/api/config",    require("./api/config"));
+app.use("/api/settings",  require("./api/settings"));
+app.use("/api/send",      require("./api/send"));
+app.use("/api/summary",   require("./api/summary"));
+app.use("/api/resume",    require("./api/resume"));
+app.use("/api/ai",        require("./api/ai"));
+app.use("/api/users",     require("./api/users"));
+app.use("/api/templates", require("./api/templates"));
+app.use("/api/history",   require("./api/history"));
+app.use("/api/schedule",  require("./api/schedule"));
+app.use("/api/cron/process-scheduled", require("./api/cron/process-scheduled"));
 
 app.listen(3000, () => {
   console.log("Cold Mailer running at http://localhost:3000");
