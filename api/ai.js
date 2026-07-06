@@ -30,10 +30,16 @@ module.exports = async function handler(req, res) {
   let userMessage = "";
 
   if (mode === "compose") {
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "Missing or invalid 'prompt'." });
+    }
     userMessage = `Write a professional cold email for this purpose: "${prompt}".
 Return only the email body, no subject line, no salutation like "Dear Sir".
 Start directly. Keep it under 150 words. Conversational, not robotic.`;
   } else if (mode === "improve") {
+    if (!body || typeof body !== "string") {
+      return res.status(400).json({ error: "Missing or invalid 'body'." });
+    }
     userMessage = `Improve this cold email. Make it more professional, concise and compelling.
 Return only the improved email body, nothing else. Keep it under 150 words.
 
@@ -51,7 +57,7 @@ ${body}`;
         Authorization: `Bearer ${settings.groq_api_key}`,
       },
       body: JSON.stringify({
-        model: "llama3-8b-8192",
+        model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
         messages: [{ role: "user", content: userMessage }],
         max_tokens: 300,
         temperature: 0.7,
@@ -59,8 +65,21 @@ ${body}`;
     });
 
     const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Groq API error:", response.status, JSON.stringify(data));
+      // 401 = bad key, 429 = rate limit, 400 = bad/deprecated model or payload
+      return res.status(502).json({
+        error: `AI provider error (${response.status}): ${data?.error?.message || "unknown"}`,
+      });
+    }
+
     const result = data.choices?.[0]?.message?.content?.trim();
-    if (!result) return res.status(500).json({ error: "AI returned empty response." });
+    if (!result) {
+      console.error("Groq returned no content:", JSON.stringify(data));
+      return res.status(500).json({ error: "AI returned empty response." });
+    }
+
     return res.status(200).json({ result });
   } catch (err) {
     console.error("AI error:", err.message);
