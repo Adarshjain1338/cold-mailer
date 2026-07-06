@@ -21,7 +21,6 @@ app.use("/api/auth",      require("./api/auth"));
 app.use("/api/config",    require("./api/config"));
 app.use("/api/settings",  require("./api/settings"));
 app.use("/api/send",      require("./api/send"));
-// app.use("/api/summary",   require("./api/summary"));
 app.use("/api/resume",    require("./api/resume"));
 app.use("/api/ai",        require("./api/ai"));
 app.use("/api/users",     require("./api/users"));
